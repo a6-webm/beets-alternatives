@@ -53,16 +53,17 @@ def _remove(path, soft=True):
 class AlternativesPlugin(BeetsPlugin):
     def __init__(self):
         super(AlternativesPlugin, self).__init__()
+        self.register_listener("import", self.update_on_import)
 
     def commands(self):
         return [AlternativesCommand(self)]
 
-    def update(self, lib, options):
+    def update(self, lib, name, create):
         try:
-            alt = self.alternative(options.name, lib)
+            alt = self.alternative(name, lib)
         except KeyError as e:
             raise UserError("Alternative collection '{0}' not found.".format(e.args[0]))
-        alt.update(create=options.create)
+        alt.update(create)
 
     def list_tracks(self, lib, options):
         if options.format is not None:
@@ -91,6 +92,14 @@ class AlternativesPlugin(BeetsPlugin):
         else:
             return External(self._log, name, lib, conf)
 
+    def update_cmd(self, lib, options):
+        self.update(lib, options.name, options.create)
+
+    def update_on_import(self, lib):
+        for name in self.config:
+            if name["auto"] is True:
+                self.update(lib, name)
+
 
 class AlternativesCommand(Subcommand):
     name = "alt"
@@ -102,7 +111,7 @@ class AlternativesCommand(Subcommand):
         subparsers.required = True
 
         update = subparsers.add_parser("update")
-        update.set_defaults(func=plugin.update)
+        update.set_defaults(func=plugin.update_cmd)
         update.add_argument("name", metavar="NAME")
         update.add_argument("--create", action="store_const", dest="create", const=True)
         update.add_argument(
@@ -174,6 +183,8 @@ class External(object):
         self.query, _ = parse_query_string(query, Item)
 
         self.removable = config.get(dict).get("removable", True)
+
+        self.auto = config.get(dict).get("auto", True)
 
         if "directory" in config:
             dir = config["directory"].as_str()
